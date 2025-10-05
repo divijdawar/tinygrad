@@ -813,6 +813,13 @@ def upat_interpret(p:UPat, fxn:Callable) -> Callable:
       return None
   return universal_match
 
+def fixup_pm_function(fxn) -> Callable:
+  if isinstance(fxn, UPat):
+    # TODO: write this
+    raise NotImplementedError("rhs UPat is not supported")
+  if isinstance(fxn, tuple): return types.FunctionType(*fxn)
+  return fxn
+
 class PatternMatcher:
   def __init__(self, patterns:Sequence[tuple[UPat, Callable|tuple]], compiled=bool(getenv("UPAT_COMPILE", 1))):
     if compiled: from tinygrad.uop.upat import upat_compile
