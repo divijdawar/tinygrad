@@ -813,10 +813,20 @@ def upat_interpret(p:UPat, fxn:Callable) -> Callable:
       return None
   return universal_match
 
-def fixup_pm_function(fxn) -> Callable:
+def fixup_pm_function(fxn:Callable|tuple|UPat) -> Callable:
   if isinstance(fxn, UPat):
-    # TODO: write this
-    raise NotImplementedError("rhs UPat is not supported")
+    def rewriter(**kwargs):
+      memo:dict[UPat,UOp] = {}
+      def build(p:UPat) -> UOp:
+        if p in memo: return memo[p]
+        if p.name is not None and p.name in kwargs: return kwargs[p.name]
+        if not isinstance(p.op,Ops): raise TypeError(f"UPat template node must have a valid op, not {p.op}")
+        source = tuple(build(s) for s in p.src if p.src is not None else tuple())
+        memo[p] = ret = UOp(p.op,p.dtype,source,p.arg)
+        return ret
+      return build(fxn)
+    return rewriter
+      
   if isinstance(fxn, tuple): return types.FunctionType(*fxn)
   return fxn
 
