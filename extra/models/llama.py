@@ -40,14 +40,14 @@ class Attention:
     self.head_dim = dim // n_heads
     self.n_rep = self.n_heads // self.n_kv_heads
     self.max_context = max_context
-    
+
     q_dim = self.n_heads * self.head_dim
     kv_dim = self.n_kv_heads * self.head_dim
     self.wqkv = linear(dim, q_dim + 2 * kv_dim, bias=False)
     self.wo = linear(self.n_heads * self.head_dim, dim, bias=False)
 
-    self.q_norm = nn.RMSNorm(dim, qk_norm) if qk_norm is not None else None
-    self.k_norm = nn.RMSNorm(dim, qk_norm) if qk_norm is not None else None
+    self.q_norm = nn.RMSNorm(q_dim, qk_norm) if qk_norm is not None else None
+    self.k_norm = nn.RMSNorm(kv_dim, qk_norm) if qk_norm is not None else None
 
   def __call__(self, x:Tensor, start_pos:Union[Variable,int], freqs_cis:Tensor, mask:Optional[Tensor]=None) -> Tensor:
     xqkv = self.wqkv(x)
@@ -197,7 +197,7 @@ class Transformer:
 # *** helpers ***
 
 # TODO: n_kv_heads should support None
-def convert_from_huggingface(weights:dict[str, Tensor], n_layers: int, n_heads: int, n_kv_heads: int, permute_layers: bool = True):
+def convert_from_huggingface(weights:dict[str, Tensor], n_layers: int, n_heads: int, n_kv_heads: int, permute_layers: bool = True)->dict[str,Tensor]:
   # huggingface stores Q and K permuted! it is mostly correct without this, but without it makes RoPE different, so it will diverge after 10+ toks.
   def permute(v: Tensor, n_heads: int):
     return v.reshape(n_heads, 2, v.shape[0] // n_heads // 2, v.shape[1] if len(v.shape) > 1 else 1).transpose(1, 2).reshape(*v.shape[:2])
@@ -228,10 +228,16 @@ def convert_from_huggingface(weights:dict[str, Tensor], n_layers: int, n_heads: 
       experts[f'layers.{layer}.feed_forward.{name}'][int(expert)] = v
       continue
     sd[keymap[k]] = v
+  #Fuse Q, K, V weights
+  for l in range(n_layers):
+    wq = sd.pop(f"layers.{l}.attention.wq.weight")
+    wk = sd.pop(f"layers.{l}.attention.wk.weight")
+    wv = sd.pop(f"layers.{l}.attention.wv.weight")
+    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=0)
   for k,v in experts.items(): sd[k] = Tensor.stack(*[v[i] for i in range(len(v))])
   return sd
 
-def convert_from_gguf(weights:dict[str, Tensor], n_layers:int):
+def convert_from_gguf(weights:dict[str, Tensor], n_layers:int)->dict[str,Tensor]:
   keymap = {
     "token_embd.weight": "tok_embeddings.weight",
     **{f"blk.{l}.attn_norm.weight": f"layers.{l}.attention_norm.weight" for l in range(n_layers)},
@@ -244,6 +250,11 @@ def convert_from_gguf(weights:dict[str, Tensor], n_layers:int):
   }
   sd = {keymap[k]: v for k,v in weights.items()}
   sd["output.weight"] = weights["token_embd.weight"]
+  for l in range(n_layers):
+    wq = sd.pop(f"layers.{l}.attention.wq.weight")
+    wk = sd.pop(f"layers.{l}.attention.wk.weight")
+    wv = sd.pop(f"layers.{l}.attention.wv.weight")
+    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=0)
   return sd
 
 def fix_bf16(weights:dict[Any, Tensor]):
