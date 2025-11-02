@@ -233,7 +233,7 @@ def convert_from_huggingface(weights:dict[str, Tensor], n_layers: int, n_heads: 
     wq = sd.pop(f"layers.{l}.attention.wq.weight")
     wk = sd.pop(f"layers.{l}.attention.wk.weight")
     wv = sd.pop(f"layers.{l}.attention.wv.weight")
-    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=0)
+    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=-1)
   for k,v in experts.items(): sd[k] = Tensor.stack(*[v[i] for i in range(len(v))])
   return sd
 
@@ -254,7 +254,7 @@ def convert_from_gguf(weights:dict[str, Tensor], n_layers:int)->dict[str,Tensor]
     wq = sd.pop(f"layers.{l}.attention.wq.weight")
     wk = sd.pop(f"layers.{l}.attention.wk.weight")
     wv = sd.pop(f"layers.{l}.attention.wv.weight")
-    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=0)
+    sd[f"layers.{l}.attention.wqkv.weight"] = wq.cat(wk,wv,dim=-1)
   return sd
 
 def fix_bf16(weights:dict[Any, Tensor]):

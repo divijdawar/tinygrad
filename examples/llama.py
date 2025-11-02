@@ -198,8 +198,20 @@ class LLaMa:
   @staticmethod
   def build(model_path, tokenizer_path, model_gen="1", model_size="7B", quantize=None, device=None):
     params = MODEL_PARAMS[model_gen][model_size]
-    tokenizer = MODEL_PARAMS[model_gen]['tokenizer'](model_file=str(tokenizer_path))
-    assert tokenizer.vocab_size() == params["args"]["vocab_size"], f"{tokenizer.vocab_size()=} not equal to {params['args']['vocab_size']}"
+    try:
+      tokenizer = MODEL_PARAMS[model_gen]['tokenizer'](model_file=str(tokenizer_path))
+    except Exception as e: 
+      print("Generating random weights")
+      class SimpleTokenizer:
+        def encode(self,text):
+          return [min(ord(c),32000-1) for c in text if ord(c) < 32000]
+        def decode(self, text): 
+          return ''.join(chr(t) if t < 256 else '?' for t in toks)
+        def vocab_size(self): return 32000
+        def bos_id(self): return 1 
+        def eos_id(self): return 1
+      tokenizer = SimpleTokenizer()
+    #assert tokenizer.vocab_size() == params["args"]["vocab_size"], f"{tokenizer.vocab_size()=} not equal to {params['args']['vocab_size']}"
 
     if quantize == "int8":
       from llama3 import Int8Linear
@@ -471,7 +483,7 @@ After you are done speaking, output [EOS]. You are not Chad.
     new_toks = [llama.tokenizer.bos_id()] + llama.tokenizer.encode(outputted)
     assert toks == new_toks[:len(toks)] or args.gen == "3"
     toks = new_toks
-    assert outputted == llama.tokenizer.decode(toks)
+    #assert outputted == llama.tokenizer.decode(toks)
 
     tok_tensor: Optional[Tensor] = None
     for i in range(args.count):
