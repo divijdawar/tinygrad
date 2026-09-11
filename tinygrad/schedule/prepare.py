@@ -1,9 +1,8 @@
 from tinygrad.dtype import dtypes, to_dtype
 from tinygrad.uop.ops import PatternMatcher, UPat, Ops, UOp, resolve, GroupOp
 from tinygrad.uop.ops import graph_rewrite, rewrite_group, identity_element, resolve_returned_after
-from tinygrad.uop.movement import mop_cleanup
+from tinygrad.uop.movement import mop_cleanup, pm_mops
 from tinygrad.helpers import prod, getenv, all_int, DEBUG, SPLIT_REDUCEOP, OPENPILOT_HACKS, FLOAT16, argsort
-from tinygrad.schedule.indexing import apply_movement_op
 from tinygrad.schedule.allreduce import create_allreduce_function
 from tinygrad.schedule.multi import multi_pm
 
@@ -29,27 +28,6 @@ pm_fold_moved_after = PatternMatcher([
   (UPat(Ops.CONTIGUOUS, src=(UPat((*GroupOp.Movement,Ops.CAST,Ops.WHERE), name="src"),), name="after"), found_after),
   # replace ALU sources with AFTER versions found above
   (UPat(GroupOp.ALU, name="alu"), lambda ctx,alu: alu.replace(src=new_src) if (new_src:=tuple(ctx.get(s, s) for s in alu.src)) != alu.src else None),
-])
-
-# movement op on INDEX as a PatternMatcher
-def _mop_index(r:UOp, idx:UOp):
-  idxs = idx.src[1:]
-  if len(idxs) == len(r.shape):
-    return r.src[0].index(*apply_movement_op(r.op, r.src[0].shape, r.marg, idxs), arg=idx.arg)
-  if r.op is Ops.RESHAPE:
-    src_prefix = len(r.src[0].shape) - len(r.shape[len(idxs):])
-    if src_prefix >= 0 and r.src[0].shape[src_prefix:] == r.shape[len(idxs):]:
-      if src_prefix == 0: return r.src[0]
-      ret = r.src[0].index(*apply_movement_op(r.op, r.src[0].shape[:src_prefix], r.shape[:len(idxs)], idxs), arg=idx.arg)
-      return ret if ret.shape == idx.shape else None
-
-pm_mops = PatternMatcher([
-  # handle movement ops on INDEX
-  (UPat(GroupOp.Movement, name="r").f(Ops.INDEX, allow_any_len=True, name="idx"), _mop_index),
-  # move movement ops and INDEX after AFTER
-  (UPat(GroupOp.Movement|{Ops.INDEX}, name="r").after(name="a", allow_any_len=True),
-   lambda r,a: UOp(r.op, src=(a.replace(src=(r.src[0],)+a.src[1:]),)+r.src[1:], arg=r.arg)),
-  (UPat(GroupOp.Movement, name="r").end(name="a", allow_any_len=True), lambda r,a: a.replace(src=(r.src[0],)+a.src[1:])),
 ])
 
 # *****************

@@ -160,7 +160,7 @@ def simplify_copy_kernel(call:UOp, ast:UOp, dst:UOp, src:UOp):
   # NOTE: this is a codegen for SDMA devices
   if dst.device == src.device and not (isinstance(dst.device, str) and dst.device.startswith("DISK")): return None
   from tinygrad.codegen.simplify import pm_flatten_range, pm_simplify_ranges
-  from tinygrad.schedule.prepare import pm_mops
+  from tinygrad.uop.movement import pm_mops
   from tinygrad.uop.symbolic import sym
   sink = graph_rewrite(ast, sym+pm_mops+pm_flatten_range+pm_simplify_ranges, ctx={}, name="simplify ranges in copy")
   return call.replace(src=(sink,) + call.src[1:])

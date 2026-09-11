@@ -9,7 +9,7 @@ from tinygrad.helpers import prod, dedup, DEBUG_RANGEIFY, VIZ, MAX_KERNEL_BUFFER
 from tinygrad.helpers import get_single_element
 from tinygrad.codegen.simplify import pm_flatten_range, pm_reduce_simplify
 from tinygrad.schedule.indexing import run_rangeify, BufferizeOpts, apply_movement_op
-from tinygrad.schedule.prepare import pm_mops
+from tinygrad.uop.movement import pm_mops
 
 # creation can recurse a lot
 import sys
