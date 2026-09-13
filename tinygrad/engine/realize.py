@@ -26,8 +26,10 @@ def get_call_outs_ins(call:UOp) -> tuple[tuple[int, ...], tuple[int, ...]]:
   return (), ()
 
 def get_call_written_bufs(call:UOp) -> list[UOp]:
+  if isinstance(call.arg.aux, HCQInfo): return list(call.arg.aux.written_bufs)
   arg_uops, (outs, ins) = get_call_arg_uops(call), get_call_outs_ins(call)
-  return dedup([b for k in outs if k not in ins and (b:=u if (cv:=(u:=arg_uops[k]).contiguous_view()) is None else cv[0]).op is Ops.BUFFER])
+  bufs = [b.src[0].storage_base if (b:=arg_uops[k].storage_base).op is Ops.MSELECT else b for k in outs if k not in ins]
+  return dedup([b for b in bufs if b.op is Ops.BUFFER])
 
 def get_call_kernels(call:UOp) -> list[tuple[str, UOp, tuple[str, Estimates, bytes]|None]]:
   if isinstance(call.arg.aux, HCQInfo): # the submitter itself, then every kernel it enqueues
@@ -43,7 +45,7 @@ def get_call_name(call:UOp, bufs:Sequence[Buffer|UOp], var_vals:dict[str, int]|N
   def _dev_str(buf:Buffer|UOp) -> str: return ', '.join(d[:7] for d in to_tuple(buf.device))
 
   ast, arg_uops = call.src[0], get_call_arg_uops(call)
-  if ast.op is Ops.PROGRAM: return ast.arg.name
+  if ast.op is Ops.PROGRAM: return ast.src[0].arg.name
   if ast.op is Ops.COPY: return colored(f"copy {_uop_sz_to_str(arg_uops[0]):>10}, {_dev_str(bufs[0]):>7s} <- {_dev_str(bufs[1]):7s}", "yellow")
   if ast.op is Ops.CUSTOM_FUNCTION and ast.arg == "encdec": return colored(f"enc/dec {_uop_sz_to_str(arg_uops[0])}", "yellow")
   if ast.op is Ops.CUSTOM_FUNCTION and ast.arg == "graph": return colored(f"batched {len(ast.src[0].src)}", "cyan")
